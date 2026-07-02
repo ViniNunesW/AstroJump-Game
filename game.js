@@ -1081,8 +1081,8 @@ function update() {
                     audio.playBreak();
                     p.broken = true;
                     createPlatformExplosion(p.x + p.width/2, p.y + p.height/2, '#ff6b6b');
-                    // Give a tiny bounce before falling
-                    player.vy = JUMP_POWER * 0.6;
+                    // Give the same bounce as standard platforms
+                    player.vy = JUMP_POWER;
                 } else if (p.type === 'spring') {
                     // SUPER BOOST
                     audio.playSpring();
