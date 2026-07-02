@@ -1651,7 +1651,18 @@ function initPeerListeners() {
         btnMPStartRace.disabled = true;
 
         const peerId = 'astrojump-' + roomId;
-        peer = new Peer(peerId);
+        const peerConfig = {
+            debug: 2,
+            secure: true,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' }
+                ]
+            }
+        };
+        peer = new Peer(peerId, peerConfig);
 
         peer.on('open', (id) => {
             mpStatusText.textContent = 'Aguardando seu amigo entrar...';
@@ -1690,7 +1701,18 @@ function initPeerListeners() {
         mpStatusText.textContent = 'Conectando à sala...';
         btnMPStartRace.classList.add('hidden');
 
-        peer = new Peer();
+        const peerConfig = {
+            debug: 2,
+            secure: true,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' }
+                ]
+            }
+        };
+        peer = new Peer(peerConfig);
 
         peer.on('open', () => {
             conn = peer.connect('astrojump-' + roomId);
@@ -1742,6 +1764,11 @@ function setupHostConnection() {
         closeMultiplayer();
         showMenu();
     });
+
+    conn.on('error', (err) => {
+        console.error('Connection error:', err);
+        mpStatusText.textContent = 'Erro de conexão: ' + err.message;
+    });
 }
 
 function setupGuestConnection() {
@@ -1749,7 +1776,15 @@ function setupGuestConnection() {
     const p2Dot = document.getElementById('p2-dot');
     const p2Name = document.getElementById('p2-name');
 
+    // Timeout de 15 segundos para alertar sobre NAT/bloqueio
+    const timeoutId = setTimeout(() => {
+        if (conn && !conn.open) {
+            mpStatusText.textContent = 'Conexão demorando muito. Verifique se o código está correto ou se o firewall/rede está bloqueando P2P.';
+        }
+    }, 15000);
+
     conn.on('open', () => {
+        clearTimeout(timeoutId);
         mpStatusText.textContent = 'Conectado! Aguardando o host iniciar a corrida...';
         p2Dot.classList.add('active');
         p2Name.textContent = 'Host (J1) - Pronto';
@@ -1765,9 +1800,16 @@ function setupGuestConnection() {
     });
 
     conn.on('close', () => {
+        clearTimeout(timeoutId);
         alert('Sala fechada pelo host.');
         closeMultiplayer();
         showMenu();
+    });
+
+    conn.on('error', (err) => {
+        clearTimeout(timeoutId);
+        console.error('Connection error:', err);
+        mpStatusText.textContent = 'Erro de conexão com o host: ' + err.message;
     });
 }
 
