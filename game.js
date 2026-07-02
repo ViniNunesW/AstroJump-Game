@@ -491,19 +491,21 @@ let platformIdCounter = 0;
 let isPointerDown = false;
 let pointerX = 0;
 
-// Multiplayer state variables
-let isMultiplayer = false;
-let isHost = false;
-let peer = null;
-let conn = null;
-let roomId = '';
-let sharedSeed = '';
+// Supabase Configuration - Substitua com as credenciais do seu projeto Supabase!
+const SUPABASE_URL = "https://ojfugymcxpdigbwwxsjh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qZnVneW1jeHBkaWdid3d4c2poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI5OTYyNTYsImV4cCI6MjA5ODU3MjI1Nn0.mLOnwcp0z65WIUeSEjIqd28i3zfghCZJQFydxe_0HO0";
+
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_URL !== "SEU_SUPABASE_URL" && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== "SUA_SUPABASE_ANON_KEY") {
+    try {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+        console.error("Erro ao conectar com o Supabase:", e);
+    }
+}
+
+let scoreSubmitted = false;
 let randomGenerator = Math.random;
-let friendData = { x: 0, y: 0, skin: 0, score: 0, isDead: false, facingLeft: false };
-let friendActive = false;
-let countdownVal = 3;
-let countdownInterval = null;
-let isPlayerDead = false;
 
 // Get Highscore from localStorage
 if (localStorage.getItem('astrojump_highscore')) {
@@ -746,8 +748,8 @@ window.addEventListener('DOMContentLoaded', () => {
     // Start Game Loop
     requestAnimationFrame(gameLoop);
     
-    // Initialize Multiplayer Peer listeners
-    initPeerListeners();
+    // Initialize Leaderboard listeners
+    initLeaderboardListeners();
 });
 
 // Setup and Start Game logic
@@ -759,24 +761,13 @@ function startGame() {
     document.getElementById('pause-screen').classList.remove('active');
     document.getElementById('game-over-screen').classList.add('hidden');
     document.getElementById('game-over-screen').classList.remove('active');
-    document.getElementById('multiplayer-screen').classList.add('hidden');
-    document.getElementById('multiplayer-screen').classList.remove('active');
+    document.getElementById('leaderboard-screen').classList.add('hidden');
+    document.getElementById('leaderboard-screen').classList.remove('active');
+    document.getElementById('rank-submit-box').classList.add('hidden');
     
-    if (isMultiplayer) {
-        document.getElementById('hud').classList.add('hidden');
-        document.getElementById('mp-hud').classList.remove('hidden');
-        randomGenerator = createPRNG(sharedSeed);
-        
-        // Reset friend/player state
-        friendData.isDead = false;
-        friendData.score = 0;
-        isPlayerDead = false;
-        friendActive = true;
-    } else {
-        document.getElementById('hud').classList.remove('hidden');
-        document.getElementById('mp-hud').classList.add('hidden');
-        randomGenerator = Math.random;
-    }
+    document.getElementById('hud').classList.remove('hidden');
+    randomGenerator = Math.random;
+    scoreSubmitted = false;
 
     // Init Physics & Entities
     player = {
@@ -819,17 +810,9 @@ function startGame() {
         generatePlatform(CANVAS_HEIGHT - 170 - (i * 70));
     }
 
-    if (isMultiplayer) {
-        gameState = 'COUNTDOWN';
-        countdownVal = 3;
-        startCountdown();
-    } else {
-        gameState = 'PLAYING';
-    }
+    gameState = 'PLAYING';
     
     document.getElementById('score-val').textContent = score;
-    document.getElementById('mp-score-val-p1').textContent = score;
-    document.getElementById('mp-score-val-p2').textContent = 0;
 }
 
 function pauseGame() {
@@ -853,6 +836,8 @@ function showMenu() {
     document.getElementById('pause-screen').classList.remove('active');
     document.getElementById('game-over-screen').classList.add('hidden');
     document.getElementById('game-over-screen').classList.remove('active');
+    document.getElementById('leaderboard-screen').classList.add('hidden');
+    document.getElementById('leaderboard-screen').classList.remove('active');
     
     document.getElementById('start-screen').classList.remove('hidden');
     document.getElementById('start-screen').classList.add('active');
@@ -884,34 +869,33 @@ function gameOver() {
         badge.classList.add('hidden');
     }
 
-    let msg = "";
-    if (isMultiplayer) {
-        document.getElementById('mp-hud').classList.add('hidden');
-        if (score > friendData.score) {
-            msg = `🏆 VOCÊ VENCEU! (${score} vs ${friendData.score})`;
-        } else if (score < friendData.score) {
-            msg = `😢 SEU AMIGO VENCEU! (${friendData.score} vs ${score})`;
-        } else {
-            msg = `🤝 EMPATE ESTELAR! (${score} vs ${friendData.score})`;
-        }
-    } else {
-        const msgs = [
-            "A gravidade é uma força cruel!",
-            "Um pequeno deslize cósmico.",
-            "Que subida estelar! Continue tentando.",
-            "Seu Astro cansou de subir hoje.",
-            "Você quase tocou as estrelas!",
-            "Pou ficaria orgulhoso desse salto."
-        ];
-        msg = msgs[Math.floor(Math.random() * msgs.length)];
-        if (isNewRecord) msg = "INCRÍVEL! Novo Recorde Espacial! 🚀";
-    }
+    const msgs = [
+        "A gravidade é uma força cruel!",
+        "Um pequeno deslize cósmico.",
+        "Que subida estelar! Continue tentando.",
+        "Seu Astro cansou de subir hoje.",
+        "Você quase tocou as estrelas!",
+        "Pou ficaria orgulhoso desse salto."
+    ];
+    let msg = msgs[Math.floor(Math.random() * msgs.length)];
+    if (isNewRecord) msg = "INCRÍVEL! Novo Recorde Espacial! 🚀";
     document.getElementById('game-over-msg').textContent = msg;
+
+    // Show score submission box if supabase is available and score > 0
+    const submitBox = document.getElementById('rank-submit-box');
+    if (supabase && score > 0 && !scoreSubmitted) {
+        submitBox.classList.remove('hidden');
+        document.getElementById('btn-submit-score').disabled = false;
+        document.getElementById('btn-submit-score').querySelector('span').textContent = 'ENVIAR';
+    } else {
+        submitBox.classList.add('hidden');
+    }
 
     // Show game over overlay
     document.getElementById('game-over-screen').classList.remove('hidden');
     document.getElementById('game-over-screen').classList.add('active');
 }
+
 
 // Platform Generator
 function generatePlatform(yPosition) {
@@ -1007,39 +991,10 @@ function gameLoop() {
 }
 
 function update() {
-    if (gameState !== 'PLAYING' && gameState !== 'SPECTATING') {
+    if (gameState !== 'PLAYING') {
         // Simple star update when not playing
         particles.forEach(p => p.update());
         particles = particles.filter(p => p.life > 0);
-        return;
-    }
-
-    if (gameState === 'SPECTATING') {
-        // Camera follows the friend
-        const midPoint = CANVAS_HEIGHT / 2.3;
-        const targetCameraYVal = friendData.y - midPoint;
-        if (targetCameraYVal < targetCameraY) {
-            targetCameraY = targetCameraYVal;
-        }
-        cameraY += (targetCameraY - cameraY) * 0.15;
-        
-        // Update moving platforms
-        platforms.forEach(p => {
-            if (p.type === 'moving') {
-                p.x += p.vx;
-                if (p.x <= 0) { p.x = 0; p.vx = -p.vx; }
-                else if (p.x + p.width >= CANVAS_WIDTH) { p.x = CANVAS_WIDTH - p.width; p.vx = -p.vx; }
-            }
-        });
-        
-        particles.forEach(p => p.update());
-        particles = particles.filter(p => p.life > 0);
-        
-        updateMPHUD();
-
-        if (friendData.isDead) {
-            gameOver();
-        }
         return;
     }
 
@@ -1245,39 +1200,7 @@ function update() {
 
     // 10. Check Fall Game Over
     if (player.y - cameraY > CANVAS_HEIGHT + 50) {
-        if (isMultiplayer) {
-            isPlayerDead = true;
-            if (conn && conn.open) {
-                conn.send({
-                    type: 'state',
-                    x: player.x,
-                    y: player.y,
-                    score: score,
-                    isDead: true,
-                    facingLeft: player.facingLeft
-                });
-            }
-            if (friendData.isDead) {
-                gameOver();
-            } else {
-                gameState = 'SPECTATING';
-            }
-        } else {
-            gameOver();
-        }
-    }
-
-    // 11. Sync Multiplayer state during play
-    if (isMultiplayer && conn && conn.open) {
-        conn.send({
-            type: 'state',
-            x: player.x,
-            y: player.y,
-            score: score,
-            isDead: false,
-            facingLeft: player.facingLeft
-        });
-        updateMPHUD();
+        gameOver();
     }
 }
 
@@ -1417,30 +1340,6 @@ function draw() {
     // 3. Draw Particles
     particles.forEach(p => p.draw(ctx));
 
-    // 3.5 Draw Friend (Multiplayer)
-    if (isMultiplayer && friendActive) {
-        ctx.save();
-        ctx.globalAlpha = friendData.isDead ? 0.25 : 0.65;
-        const friendSkin = SKINS[friendData.skin];
-        friendSkin.draw(
-            ctx,
-            friendData.x,
-            friendData.y - cameraY,
-            player.width,
-            player.height,
-            friendData.facingLeft,
-            1.0,
-            1.0
-        );
-        
-        // Draw nickname label above friend
-        ctx.fillStyle = '#00e5ff';
-        ctx.font = 'bold 11px Outfit';
-        ctx.textAlign = 'center';
-        ctx.fillText('AMIGO', friendData.x + player.width/2, friendData.y - cameraY - 10);
-        ctx.restore();
-    }
-
     // 4. Draw Player (Astro Mascot)
     if (gameState === 'PLAYING') {
         const currentSkin = SKINS[player.skin];
@@ -1454,25 +1353,6 @@ function draw() {
             player.squashX, 
             player.squashY
         );
-    }
-
-    // 4.5 Draw Countdown Overlay
-    if (gameState === 'COUNTDOWN') {
-        ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        
-        ctx.fillStyle = '#00e5ff';
-        ctx.font = 'bold 80px Space Grotesk';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.shadowColor = '#00e5ff';
-        ctx.shadowBlur = 20;
-        
-        let text = countdownVal;
-        if (countdownVal === 0) text = 'VAI!';
-        ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-        ctx.restore();
     }
 }
 
@@ -1550,304 +1430,158 @@ function interpolateColor(color1, color2, factor) {
     return `#${pad(r)}${pad(g)}${pad(b)}`;
 }
 
-// ==================== MULTIPLAYER ENGINE (PEERJS) ====================
+// ==================== RANKING ONLINE (SUPABASE) ====================
 
-function createPRNG(seedString) {
-    let hash = 0;
-    for (let i = 0; i < seedString.length; i++) {
-        hash = (hash << 5) - hash + seedString.charCodeAt(i);
-        hash |= 0;
+async function fetchLeaderboard() {
+    const loadingEl = document.getElementById('leaderboard-loading');
+    const listEl = document.getElementById('leaderboard-list');
+
+    loadingEl.classList.remove('hidden');
+    listEl.classList.add('hidden');
+    listEl.innerHTML = '';
+
+    if (!supabase) {
+        loadingEl.innerHTML = '<span style="color: #ff4a4a;">Erro: Supabase não configurado. Por favor, adicione as credenciais no topo de game.js.</span>';
+        return;
     }
-    return function() {
-        let t = hash += 0x6D2B79F5;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
 
-function startCountdown() {
-    if (countdownInterval) clearInterval(countdownInterval);
-    countdownInterval = setInterval(() => {
-        countdownVal--;
-        if (countdownVal < 0) {
-            clearInterval(countdownInterval);
-            gameState = 'PLAYING';
+    try {
+        const { data, error } = await supabase
+            .from('leaderboard')
+            .select('*')
+            .order('score', { ascending: false })
+            .limit(10);
+
+        if (error) throw error;
+
+        loadingEl.classList.add('hidden');
+        listEl.classList.remove('hidden');
+
+        if (data && data.length > 0) {
+            data.forEach((entry, idx) => {
+                const rank = idx + 1;
+                const item = document.createElement('div');
+                item.className = `leaderboard-item top-${rank <= 3 ? rank : 'other'}`;
+                
+                const skinName = SKINS[entry.skin]?.name || 'Classic';
+
+                item.innerHTML = `
+                    <div class="leaderboard-left">
+                        <span class="leaderboard-rank">${rank}</span>
+                        <div>
+                            <span class="leaderboard-name">${escapeHTML(entry.username)}</span>
+                            <div style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">Skin: ${skinName}</div>
+                        </div>
+                    </div>
+                    <span class="leaderboard-score">${entry.score}</span>
+                `;
+                listEl.appendChild(item);
+            });
+        } else {
+            listEl.innerHTML = '<div style="color: var(--text-muted); padding: 20px;">Nenhum recorde registrado ainda. Seja o primeiro!</div>';
         }
-    }, 1000);
+    } catch (err) {
+        console.error('Erro ao buscar ranking:', err);
+        loadingEl.innerHTML = `<span style="color: #ff4a4a;">Erro ao carregar ranking: ${err.message}</span>`;
+    }
 }
 
-function closeMultiplayer() {
-    isMultiplayer = false;
-    friendActive = false;
-    if (countdownInterval) clearInterval(countdownInterval);
-    if (conn) {
-        conn.close();
-        conn = null;
+async function submitScore() {
+    const nameInput = document.getElementById('input-player-name');
+    const name = nameInput.value.trim();
+    if (!name) {
+        alert('Por favor, insira seu nome.');
+        return;
     }
-    if (peer) {
-        peer.destroy();
-        peer = null;
-    }
-    document.getElementById('mp-hud').classList.add('hidden');
-}
 
-function initPeerListeners() {
-    const btnMultiplayerMenu = document.getElementById('btn-multiplayer-menu');
-    const btnMPCreate = document.getElementById('btn-mp-create');
-    const btnMPJoin = document.getElementById('btn-mp-join');
-    const btnMPStartRace = document.getElementById('btn-mp-start-race');
-    const btnMPBack = document.getElementById('btn-mp-back');
-    const inputRoomId = document.getElementById('input-room-id');
-    const mpInitialActions = document.getElementById('mp-initial-actions');
-    const mpLobbyStatus = document.getElementById('mp-lobby-status');
-    const lobbyRoomCode = document.getElementById('lobby-room-code');
-    const mpStatusText = document.getElementById('mp-status-text');
-    const p2Dot = document.getElementById('p2-dot');
-    const p2Name = document.getElementById('p2-name');
+    const btnSubmit = document.getElementById('btn-submit-score');
+    const submitText = btnSubmit.querySelector('span');
 
-    btnMultiplayerMenu.addEventListener('click', () => {
-        audio.playClick();
-        document.getElementById('start-screen').classList.add('hidden');
-        document.getElementById('start-screen').classList.remove('active');
-        document.getElementById('multiplayer-screen').classList.remove('hidden');
-        document.getElementById('multiplayer-screen').classList.add('active');
+    btnSubmit.disabled = true;
+    submitText.textContent = 'ENVIANDO...';
+
+    try {
+        const { error } = await supabase
+            .from('leaderboard')
+            .insert([
+                { username: name, score: score, skin: currentSkinIdx }
+            ]);
+
+        if (error) throw error;
+
+        scoreSubmitted = true;
+        document.getElementById('rank-submit-box').classList.add('hidden');
         
-        // Reset UI
-        mpInitialActions.classList.remove('hidden');
-        mpLobbyStatus.classList.add('hidden');
-        inputRoomId.value = '';
-    });
+        openLeaderboardScreen();
+    } catch (err) {
+        console.error('Erro ao enviar score:', err);
+        alert('Erro ao enviar score: ' + err.message);
+        btnSubmit.disabled = false;
+        submitText.textContent = 'TENTAR DE NOVO';
+    }
+}
 
-    btnMPBack.addEventListener('click', () => {
-        audio.playClick();
-        closeMultiplayer();
-        document.getElementById('multiplayer-screen').classList.add('hidden');
-        document.getElementById('multiplayer-screen').classList.remove('active');
+function openLeaderboardScreen() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('active');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.remove('active');
+    
+    const screen = document.getElementById('leaderboard-screen');
+    screen.classList.remove('hidden');
+    screen.classList.add('active');
+    fetchLeaderboard();
+}
+
+function closeLeaderboardScreen() {
+    const screen = document.getElementById('leaderboard-screen');
+    screen.classList.add('hidden');
+    screen.classList.remove('active');
+    
+    if (gameState === 'GAMEOVER') {
+        document.getElementById('game-over-screen').classList.remove('hidden');
+        document.getElementById('game-over-screen').classList.add('active');
+    } else {
         document.getElementById('start-screen').classList.remove('hidden');
         document.getElementById('start-screen').classList.add('active');
-    });
-
-    // HOST: Create Room
-    btnMPCreate.addEventListener('click', () => {
-        audio.playClick();
-        isMultiplayer = true;
-        isHost = true;
-        
-        // Generate a 4-letter room code (Uppercase)
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        roomId = '';
-        for (let i = 0; i < 4; i++) {
-            roomId += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        sharedSeed = roomId;
-        lobbyRoomCode.textContent = roomId;
-        
-        mpInitialActions.classList.add('hidden');
-        mpLobbyStatus.classList.remove('hidden');
-        mpStatusText.textContent = 'Iniciando servidor de sala...';
-        btnMPStartRace.classList.add('hidden');
-        btnMPStartRace.disabled = true;
-
-        const peerId = 'astrojump-' + roomId;
-        const peerConfig = {
-            debug: 2,
-            secure: true,
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' }
-                ]
-            }
-        };
-        peer = new Peer(peerId, peerConfig);
-
-        peer.on('open', (id) => {
-            mpStatusText.textContent = 'Aguardando seu amigo entrar...';
-            btnMPStartRace.classList.remove('hidden');
-            btnMPStartRace.classList.add('disabled');
-        });
-
-        peer.on('connection', (connection) => {
-            conn = connection;
-            setupHostConnection();
-        });
-
-        peer.on('error', (err) => {
-            console.error('Peer error:', err);
-            mpStatusText.textContent = 'Erro de conexão ou ID já em uso.';
-        });
-    });
-
-    // GUEST: Join Room
-    btnMPJoin.addEventListener('click', () => {
-        audio.playClick();
-        const codeInput = inputRoomId.value.trim().toUpperCase();
-        if (codeInput.length !== 4) {
-            alert('Código deve ter 4 caracteres.');
-            return;
-        }
-
-        isMultiplayer = true;
-        isHost = false;
-        roomId = codeInput;
-        sharedSeed = codeInput;
-
-        mpInitialActions.classList.add('hidden');
-        mpLobbyStatus.classList.remove('hidden');
-        lobbyRoomCode.textContent = roomId;
-        mpStatusText.textContent = 'Conectando à sala...';
-        btnMPStartRace.classList.add('hidden');
-
-        const peerConfig = {
-            debug: 2,
-            secure: true,
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' }
-                ]
-            }
-        };
-        peer = new Peer(peerConfig);
-
-        peer.on('open', () => {
-            conn = peer.connect('astrojump-' + roomId);
-            setupGuestConnection();
-        });
-
-        peer.on('error', (err) => {
-            console.error('Peer error:', err);
-            mpStatusText.textContent = 'Erro ao conectar. Verifique se a sala existe.';
-        });
-    });
-
-    // Host click Start Race
-    btnMPStartRace.addEventListener('click', () => {
-        if (!conn || !conn.open) return;
-        audio.playClick();
-        conn.send({ type: 'start' });
-        startGame();
-    });
-}
-
-function setupHostConnection() {
-    const mpStatusText = document.getElementById('mp-status-text');
-    const p2Dot = document.getElementById('p2-dot');
-    const p2Name = document.getElementById('p2-name');
-    const btnMPStartRace = document.getElementById('btn-mp-start-race');
-
-    conn.on('open', () => {
-        mpStatusText.textContent = 'Amigo conectado!';
-        p2Dot.classList.add('active');
-        p2Name.textContent = 'Amigo (J2) - Pronto';
-        
-        conn.send({
-            type: 'init',
-            seed: sharedSeed,
-            skin: currentSkinIdx
-        });
-
-        btnMPStartRace.classList.remove('disabled');
-        btnMPStartRace.disabled = false;
-    });
-
-    conn.on('data', (data) => {
-        handleMPData(data);
-    });
-
-    conn.on('close', () => {
-        alert('Amigo desconectou.');
-        closeMultiplayer();
-        showMenu();
-    });
-
-    conn.on('error', (err) => {
-        console.error('Connection error:', err);
-        mpStatusText.textContent = 'Erro de conexão: ' + err.message;
-    });
-}
-
-function setupGuestConnection() {
-    const mpStatusText = document.getElementById('mp-status-text');
-    const p2Dot = document.getElementById('p2-dot');
-    const p2Name = document.getElementById('p2-name');
-
-    // Timeout de 15 segundos para alertar sobre NAT/bloqueio
-    const timeoutId = setTimeout(() => {
-        if (conn && !conn.open) {
-            mpStatusText.textContent = 'Conexão demorando muito. Verifique se o código está correto ou se o firewall/rede está bloqueando P2P.';
-        }
-    }, 15000);
-
-    conn.on('open', () => {
-        clearTimeout(timeoutId);
-        mpStatusText.textContent = 'Conectado! Aguardando o host iniciar a corrida...';
-        p2Dot.classList.add('active');
-        p2Name.textContent = 'Host (J1) - Pronto';
-        
-        conn.send({
-            type: 'skin',
-            skin: currentSkinIdx
-        });
-    });
-
-    conn.on('data', (data) => {
-        handleMPData(data);
-    });
-
-    conn.on('close', () => {
-        clearTimeout(timeoutId);
-        alert('Sala fechada pelo host.');
-        closeMultiplayer();
-        showMenu();
-    });
-
-    conn.on('error', (err) => {
-        clearTimeout(timeoutId);
-        console.error('Connection error:', err);
-        mpStatusText.textContent = 'Erro de conexão com o host: ' + err.message;
-    });
-}
-
-function handleMPData(data) {
-    if (data.type === 'init') {
-        sharedSeed = data.seed;
-        friendData.skin = data.skin;
-        friendActive = true;
-    } else if (data.type === 'skin') {
-        friendData.skin = data.skin;
-        friendActive = true;
-    } else if (data.type === 'start') {
-        startGame();
-    } else if (data.type === 'state') {
-        friendData.x = data.x;
-        friendData.y = data.y;
-        friendData.score = data.score;
-        friendData.isDead = data.isDead;
-        friendData.facingLeft = data.facingLeft;
-        friendActive = true;
-    } else if (data.type === 'restart') {
-        startGame();
-    } else if (data.type === 'request_restart') {
-        if (isHost && conn && conn.open) {
-            conn.send({ type: 'restart' });
-            startGame();
-        }
     }
 }
 
-function updateMPHUD() {
-    document.getElementById('mp-score-val-p1').textContent = score;
-    document.getElementById('mp-score-val-p2').textContent = friendData.score;
-    
-    const maxScore = Math.max(score, friendData.score, 100);
-    const p1Percent = Math.min((score / maxScore) * 100, 100);
-    const p2Percent = Math.min((friendData.score / maxScore) * 100, 100);
-    
-    document.getElementById('mp-tracker-p1').style.bottom = p1Percent + '%';
-    document.getElementById('mp-tracker-p2').style.bottom = p2Percent + '%';
+function initLeaderboardListeners() {
+    const btnMenu = document.getElementById('btn-leaderboard-menu');
+    const btnBack = document.getElementById('btn-leaderboard-back');
+    const btnSubmit = document.getElementById('btn-submit-score');
+
+    if (btnMenu) {
+        btnMenu.addEventListener('click', () => {
+            audio.playClick();
+            openLeaderboardScreen();
+        });
+    }
+
+    if (btnBack) {
+        btnBack.addEventListener('click', () => {
+            audio.playClick();
+            closeLeaderboardScreen();
+        });
+    }
+
+    if (btnSubmit) {
+        btnSubmit.addEventListener('click', () => {
+            audio.playClick();
+            submitScore();
+        });
+    }
+}
+
+function escapeHTML(str) {
+    return str.replace(/[&<>'"]/g, 
+        tag => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[tag] || tag)
+    );
 }

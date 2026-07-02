@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-    <!-- PeerJS for P2P Multiplayer -->
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -49,25 +49,7 @@
                 </div>
             </div>
 
-            <!-- HUD Multiplayer (Mini Race Tracker & Double Scores) -->
-            <div id="mp-hud" class="hidden">
-                <div class="mp-tracker-container">
-                    <div class="mp-tracker-line">
-                        <div id="mp-tracker-p1" class="tracker-dot self"></div>
-                        <div id="mp-tracker-p2" class="tracker-dot friend"></div>
-                    </div>
-                </div>
-                <div class="mp-scores-container">
-                    <div class="mp-score p1">
-                        <span class="label">VOCÊ</span>
-                        <span id="mp-score-val-p1" class="value">0</span>
-                    </div>
-                    <div class="mp-score p2">
-                        <span id="mp-score-label-p2" class="label">AMIGO</span>
-                        <span id="mp-score-val-p2" class="value">0</span>
-                    </div>
-                </div>
-            </div>
+
 
             <!-- Canvas do Jogo -->
             <canvas id="game-canvas" width="450" height="700"></canvas>
@@ -101,8 +83,8 @@
                             <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
                         </svg>
                     </button>
-                    <button id="btn-multiplayer-menu" class="btn-secondary">
-                        <span>MULTIJOGADOR (1v1)</span>
+                    <button id="btn-leaderboard-menu" class="btn-secondary">
+                        <span>RANK ONLINE</span>
                     </button>
                 </div>
 
@@ -153,6 +135,17 @@
                         </div>
                     </div>
 
+                    <!-- Rank Submit Box -->
+                    <div id="rank-submit-box" class="leaderboard-submit-box hidden">
+                        <span class="leaderboard-submit-title">ENVIAR PARA O RANK ONLINE</span>
+                        <div class="leaderboard-submit-input-group">
+                            <input type="text" id="input-player-name" placeholder="SEU NOME" maxlength="12">
+                            <button id="btn-submit-score" class="btn-primary">
+                                <span>ENVIAR</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="menu-actions vertical">
                         <button id="btn-retry" class="btn-primary">
                             <span>TENTAR DE NOVO</span>
@@ -167,50 +160,21 @@
                 </div>
             </div>
 
-            <!-- Tela de Multijogador -->
-            <div id="multiplayer-screen" class="overlay-screen hidden">
+            <!-- Tela de Rank Online -->
+            <div id="leaderboard-screen" class="overlay-screen hidden">
                 <div class="glass-card">
-                    <h2>Multijogador</h2>
-                    <p class="subtitle">Corrida Espacial 1v1</p>
+                    <h2>Rank Online</h2>
+                    <p class="subtitle">Melhores Astro Saltadores</p>
                     
-                    <div id="mp-initial-actions" class="menu-actions vertical">
-                        <button id="btn-mp-create" class="btn-primary">
-                            <span>CRIAR SALA (HOST)</span>
-                        </button>
-                        <div class="mp-divider"><span>OU</span></div>
-                        <div class="mp-input-group">
-                            <input type="text" id="input-room-id" placeholder="CÓDIGO" maxlength="4">
-                            <button id="btn-mp-join" class="btn-primary">
-                                <span>ENTRAR</span>
-                            </button>
-                        </div>
+                    <div id="leaderboard-loading" class="status-indicator">
+                        <span>Carregando ranking...</span>
                     </div>
 
-                    <div id="mp-lobby-status" class="hidden">
-                        <div class="lobby-room-code-box">
-                            <span class="lobby-label">CÓDIGO DA SALA</span>
-                            <span id="lobby-room-code" class="lobby-code">----</span>
-                            <span class="lobby-sub">Seu amigo deve digitar este código para entrar.</span>
-                        </div>
-                        <div class="status-indicator">
-                            <span id="mp-status-text">Conectando...</span>
-                        </div>
-                        <div class="players-list">
-                            <div class="player-slot">
-                                <span class="dot active"></span>
-                                <span>Você (J1)</span>
-                            </div>
-                            <div class="player-slot">
-                                <span class="dot" id="p2-dot"></span>
-                                <span id="p2-name">Aguardando amigo...</span>
-                            </div>
-                        </div>
-                        <button id="btn-mp-start-race" class="btn-primary disabled" disabled>
-                            <span>COMEÇAR CORRIDA</span>
-                        </button>
+                    <div id="leaderboard-list" class="leaderboard-list hidden">
+                        <!-- Preenchido via JS -->
                     </div>
 
-                    <button id="btn-mp-back" class="btn-secondary" style="margin-top: 20px; width: 100%;">
+                    <button id="btn-leaderboard-back" class="btn-secondary" style="margin-top: 20px; width: 100%;">
                         <span>VOLTAR</span>
                     </button>
                 </div>

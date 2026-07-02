@@ -838,27 +838,149 @@ body {
     margin: 0 auto;
 }
 
-.tracker-dot {
-    position: absolute;
-    left: 50%;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 2px solid #fff;
-    transform: translate(-50%, 50%);
-    bottom: 0%; /* starts at bottom */
-    transition: bottom 0.15s linear;
+/* Leaderboard screen styles */
+.leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 15px 0;
+    width: 100%;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 5px;
 }
 
-.tracker-dot.self {
-    background: var(--primary);
-    box-shadow: 0 0 10px var(--primary);
-    z-index: 2;
+/* Custom scrollbar for leaderboard */
+.leaderboard-list::-webkit-scrollbar {
+    width: 6px;
+}
+.leaderboard-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 3px;
+}
+.leaderboard-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
 }
 
-.tracker-dot.friend {
-    background: var(--secondary);
-    box-shadow: 0 0 10px var(--secondary);
-    z-index: 1;
+.leaderboard-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.leaderboard-item:hover {
+    transform: translateX(3px);
+    border-color: rgba(0, 229, 255, 0.3);
+}
+
+.leaderboard-item.top-1 {
+    background: rgba(255, 215, 0, 0.08);
+    border-color: rgba(255, 215, 0, 0.3);
+}
+.leaderboard-item.top-1 .leaderboard-rank {
+    color: #ffd700;
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+}
+
+.leaderboard-item.top-2 {
+    background: rgba(192, 192, 192, 0.08);
+    border-color: rgba(192, 192, 192, 0.3);
+}
+.leaderboard-item.top-2 .leaderboard-rank {
+    color: #c0c0c0;
+}
+
+.leaderboard-item.top-3 {
+    background: rgba(205, 127, 50, 0.08);
+    border-color: rgba(205, 127, 50, 0.3);
+}
+.leaderboard-item.top-3 .leaderboard-rank {
+    color: #cd7f32;
+}
+
+.leaderboard-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.leaderboard-rank {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 16px;
+    width: 24px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.leaderboard-name {
+    font-weight: 600;
+    color: #fff;
+}
+
+.leaderboard-score {
+    font-family: var(--font-heading);
+    font-weight: 800;
+    font-size: 16px;
+    color: var(--secondary);
+    text-shadow: 0 0 10px var(--secondary-glow);
+}
+
+/* Submit score container in Game Over */
+.leaderboard-submit-box {
+    margin-top: 15px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px dashed var(--card-border);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.leaderboard-submit-title {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--text-muted);
+    letter-spacing: 1.5px;
+    margin-bottom: 2px;
+}
+
+.leaderboard-submit-input-group {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+.leaderboard-submit-input-group input {
+    flex-grow: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: white;
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 700;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.leaderboard-submit-input-group input:focus {
+    border-color: var(--secondary);
+}
+
+.leaderboard-submit-input-group button {
+    padding: 0 16px;
+    font-size: 12px;
+    border-radius: 10px;
 }
 
