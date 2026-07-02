@@ -463,7 +463,7 @@ const SKINS = [
 
 // Game Constants and Settings
 const CANVAS_WIDTH = 450;
-const CANVAS_HEIGHT = 700;
+let CANVAS_HEIGHT = 700;
 const GRAVITY = 0.35;
 const JUMP_POWER = -11.5;
 const SPRING_POWER = -19.5;
@@ -583,6 +583,12 @@ window.addEventListener('DOMContentLoaded', () => {
         const wrapper = document.getElementById('game-wrapper');
         const width = wrapper.clientWidth;
         const height = wrapper.clientHeight;
+        
+        if (width > 0 && height > 0) {
+            // Keep logical width at 450
+            // Set logical height dynamically to match display aspect ratio (avoiding distortion)
+            CANVAS_HEIGHT = Math.round(CANVAS_WIDTH * (height / width));
+        }
         
         // Match canvas logical size to styling aspect ratio
         canvas.width = CANVAS_WIDTH;
