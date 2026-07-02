@@ -885,9 +885,8 @@ function gameOver() {
     // Show score submission box if supabase is available and score > 0
     const submitBox = document.getElementById('rank-submit-box');
     if (supabase && score > 0 && !scoreSubmitted) {
+        updateGameOverSubmitStatus();
         submitBox.classList.remove('hidden');
-        document.getElementById('btn-submit-score').disabled = false;
-        document.getElementById('btn-submit-score').querySelector('span').textContent = 'ENVIAR';
     } else {
         submitBox.classList.add('hidden');
     }
@@ -1675,6 +1674,7 @@ function closeAuthScreen() {
 
 // Profile Modal Controller (Inspecting players)
 let profileTargetPlayer = null; // holds player being inspected
+let profileOriginScreen = 'leaderboard'; // origin screen ('leaderboard' or 'start')
 
 function renderProfileAvatar(skinIdx) {
     const container = document.getElementById('profile-avatar-display');
@@ -1690,8 +1690,9 @@ function renderProfileAvatar(skinIdx) {
     skin.draw(ctx, 10, 10, 40, 40, false, 1.0, 1.0);
 }
 
-function openProfileScreen(playerData) {
+function openProfileScreen(playerData, skinIdx, origin = 'leaderboard') {
     profileTargetPlayer = playerData;
+    profileOriginScreen = origin;
 
     // Hide other screens
     document.getElementById('leaderboard-screen').classList.add('hidden');
@@ -1718,6 +1719,13 @@ function openProfileScreen(playerData) {
     bioText.classList.remove('hidden');
     bioInput.classList.add('hidden');
 
+    // Render Avatar
+    let displaySkin = skinIdx;
+    if (displaySkin === undefined) {
+        displaySkin = (loggedInPlayer && loggedInPlayer.id === playerData.id) ? currentSkinIdx : 0;
+    }
+    renderProfileAvatar(displaySkin);
+
     // Check if the viewed player is the logged in player
     if (loggedInPlayer && loggedInPlayer.id === playerData.id) {
         btnEditSave.classList.remove('hidden');
@@ -1732,13 +1740,11 @@ function closeProfileScreen() {
     screen.classList.add('hidden');
     screen.classList.remove('active');
 
-    // Return to leaderboard if it was open or menu
-    const leaderboardScreen = document.getElementById('leaderboard-screen');
-    if (gameState === 'GAMEOVER') {
+    if (profileOriginScreen === 'leaderboard') {
         openLeaderboardScreen();
     } else {
-        // Return to start menu or leaderboard depending on what triggered it
-        openLeaderboardScreen();
+        document.getElementById('start-screen').classList.remove('hidden');
+        document.getElementById('start-screen').classList.add('active');
     }
 }
 
@@ -1807,7 +1813,7 @@ function initAuthProfileListeners() {
     if (btnMyProfile) {
         btnMyProfile.addEventListener('click', () => {
             audio.playClick();
-            if (loggedInPlayer) openProfileScreen(loggedInPlayer);
+            if (loggedInPlayer) openProfileScreen(loggedInPlayer, undefined, 'start');
         });
     }
 
