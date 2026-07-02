@@ -1,0 +1,13 @@
+{
+  "name": "astrojump",
+  "version": "1.0.0",
+  "description": "Um jogo de subida infinita inspirado no minijogo do Pou e Doodle Jump, feito com HTML5 Canvas, Vanilla CSS e Web Audio API.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.2.0"
+  }
+}

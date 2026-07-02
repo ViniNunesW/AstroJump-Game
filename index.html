@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AstroJump - Subida Infinita</title>
+    <meta name="description" content="Um jogo de pulo infinito super divertido no espaço! Ajude o Astro a subir o mais alto possível.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <!-- PeerJS for P2P Multiplayer -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Background Decorativo / Efeito de Estrelas Adicional -->
+        <div class="stars-container">
+            <div class="stars"></div>
+            <div class="stars2"></div>
+            <div class="stars3"></div>
+        </div>
+
+        <div id="game-wrapper">
+            <!-- HUD (Heads Up Display) -->
+            <div id="hud" class="hidden">
+                <div class="hud-left">
+                    <div class="score-container">
+                        <span class="label">SCORE</span>
+                        <span id="score-val" class="value">0</span>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <button id="btn-mute" class="hud-btn" aria-label="Mudar Áudio">
+                        <!-- SVG Som Ativo por padrão -->
+                        <svg id="sound-on-icon" viewBox="0 0 24 24" width="24" height="24">
+                            <path fill="currentColor" d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.77 16.5,12M3,9V15H7L12,20V4L7,9H3Z" />
+                        </svg>
+                        <svg id="sound-off-icon" viewBox="0 0 24 24" width="24" height="24" class="hidden">
+                            <path fill="currentColor" d="M12,4L9.91,6.09L12,8.18M19,12C19,10.22 17.88,8.71 16.28,8.1L17.77,6.61C19.66,7.72 21,9.71 21,12C21,15.27 18.74,18 15.73,18.72L14.28,17.27C16.39,16.61 17.91,14.62 17.91,12.35M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.53C15.58,18.04 14.83,18.44 14,18.7V20.76C15.38,20.44 16.63,19.78 17.67,18.9L20.73,21.96L22,20.69L4.27,3M12,4L9.91,6.09L12,8.18V4Z" />
+                        </svg>
+                    </button>
+                    <button id="btn-pause" class="hud-btn" aria-label="Pausar Jogo">
+                        <svg viewBox="0 0 24 24" width="24" height="24">
+                            <path fill="currentColor" d="M14,19H18V5H14M6,19H10V5H6V19Z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- HUD Multiplayer (Mini Race Tracker & Double Scores) -->
+            <div id="mp-hud" class="hidden">
+                <div class="mp-tracker-container">
+                    <div class="mp-tracker-line">
+                        <div id="mp-tracker-p1" class="tracker-dot self"></div>
+                        <div id="mp-tracker-p2" class="tracker-dot friend"></div>
+                    </div>
+                </div>
+                <div class="mp-scores-container">
+                    <div class="mp-score p1">
+                        <span class="label">VOCÊ</span>
+                        <span id="mp-score-val-p1" class="value">0</span>
+                    </div>
+                    <div class="mp-score p2">
+                        <span id="mp-score-label-p2" class="label">AMIGO</span>
+                        <span id="mp-score-val-p2" class="value">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Canvas do Jogo -->
+            <canvas id="game-canvas" width="450" height="700"></canvas>
+
+            <!-- Telas de Interface (Menu, Game Over, Pause) -->
+            
+            <!-- Tela Inicial -->
+            <div id="start-screen" class="overlay-screen active">
+                <div class="logo-area">
+                    <div class="logo-orb"></div>
+                    <h1 class="game-title">ASTRO<span>JUMP</span></h1>
+                    <p class="game-subtitle">Suba até as estrelas!</p>
+                </div>
+
+                <div class="character-preview-box">
+                    <p class="select-label">Escolha seu Astro:</p>
+                    <div class="skins-carousel">
+                        <button class="skin-arrow prev-skin" aria-label="Astro anterior">&lsaquo;</button>
+                        <div class="skin-display">
+                            <div class="skin-avatar" id="skin-avatar-preview"></div>
+                            <span class="skin-name" id="skin-name-label">Classic Astro</span>
+                        </div>
+                        <button class="skin-arrow next-skin" aria-label="Próximo Astro">&rsaquo;</button>
+                    </div>
+                </div>
+
+                <div class="menu-actions">
+                    <button id="btn-start" class="btn-primary">
+                        <span>SOLO</span>
+                        <svg viewBox="0 0 24 24" width="24" height="24">
+                            <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
+                        </svg>
+                    </button>
+                    <button id="btn-multiplayer-menu" class="btn-secondary">
+                        <span>MULTIJOGADOR (1v1)</span>
+                    </button>
+                </div>
+
+                <div class="instructions">
+                    <p>Use <span class="key">←</span> <span class="key">→</span> ou <span class="key">A</span> <span class="key">D</span> no teclado.</p>
+                    <p>No celular, <span class="key">toque</span> e <span class="key">arraste</span> o dedo.</p>
+                </div>
+
+                <div class="high-score-footer">
+                    <span>RECORD: </span>
+                    <span id="best-score-menu" class="best-score-val">0</span>
+                </div>
+            </div>
+
+            <!-- Tela de Pausa -->
+            <div id="pause-screen" class="overlay-screen hidden">
+                <div class="glass-card">
+                    <h2>Jogo Pausado</h2>
+                    <p>Recupere o fôlego!</p>
+                    <div class="menu-actions vertical">
+                        <button id="btn-resume" class="btn-primary">
+                            <span>CONTINUAR</span>
+                        </button>
+                        <button id="btn-restart-pause" class="btn-secondary">
+                            <span>RECOMEÇAR</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tela de Game Over -->
+            <div id="game-over-screen" class="overlay-screen hidden">
+                <div class="glass-card game-over-card">
+                    <div class="game-over-header">
+                        <h2>Fim de Jogo!</h2>
+                        <p id="game-over-msg">Que bela subida!</p>
+                    </div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-label">SCORE</span>
+                            <span id="final-score" class="stat-val">0</span>
+                        </div>
+                        <div class="stat-box highlight">
+                            <span class="stat-label">MELHOR</span>
+                            <span id="best-score-over" class="stat-val">0</span>
+                            <span class="new-record-badge hidden" id="badge-new-record">NOVO!</span>
+                        </div>
+                    </div>
+
+                    <div class="menu-actions vertical">
+                        <button id="btn-retry" class="btn-primary">
+                            <span>TENTAR DE NOVO</span>
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+                            </svg>
+                        </button>
+                        <button id="btn-home" class="btn-secondary">
+                            <span>MENU INICIAL</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tela de Multijogador -->
+            <div id="multiplayer-screen" class="overlay-screen hidden">
+                <div class="glass-card">
+                    <h2>Multijogador</h2>
+                    <p class="subtitle">Corrida Espacial 1v1</p>
+                    
+                    <div id="mp-initial-actions" class="menu-actions vertical">
+                        <button id="btn-mp-create" class="btn-primary">
+                            <span>CRIAR SALA (HOST)</span>
+                        </button>
+                        <div class="mp-divider"><span>OU</span></div>
+                        <div class="mp-input-group">
+                            <input type="text" id="input-room-id" placeholder="CÓDIGO" maxlength="4">
+                            <button id="btn-mp-join" class="btn-primary">
+                                <span>ENTRAR</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="mp-lobby-status" class="hidden">
+                        <div class="lobby-room-code-box">
+                            <span class="lobby-label">CÓDIGO DA SALA</span>
+                            <span id="lobby-room-code" class="lobby-code">----</span>
+                            <span class="lobby-sub">Seu amigo deve digitar este código para entrar.</span>
+                        </div>
+                        <div class="status-indicator">
+                            <span id="mp-status-text">Conectando...</span>
+                        </div>
+                        <div class="players-list">
+                            <div class="player-slot">
+                                <span class="dot active"></span>
+                                <span>Você (J1)</span>
+                            </div>
+                            <div class="player-slot">
+                                <span class="dot" id="p2-dot"></span>
+                                <span id="p2-name">Aguardando amigo...</span>
+                            </div>
+                        </div>
+                        <button id="btn-mp-start-race" class="btn-primary disabled" disabled>
+                            <span>COMEÇAR CORRIDA</span>
+                        </button>
+                    </div>
+
+                    <button id="btn-mp-back" class="btn-secondary" style="margin-top: 20px; width: 100%;">
+                        <span>VOLTAR</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS do Jogo -->
+    <script src="game.js"></script>
+</body>
+</html>
