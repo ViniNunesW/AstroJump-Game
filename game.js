@@ -506,6 +506,16 @@ if (SUPABASE_URL && SUPABASE_URL !== "SEU_SUPABASE_URL" && SUPABASE_ANON_KEY && 
 
 let scoreSubmitted = false;
 let randomGenerator = Math.random;
+let loggedInPlayer = null;
+
+// Restaura sessão salva
+if (localStorage.getItem('astrojump_player')) {
+    try {
+        loggedInPlayer = JSON.parse(localStorage.getItem('astrojump_player'));
+    } catch (e) {
+        console.error("Erro ao restaurar sessão:", e);
+    }
+}
 
 // Get Highscore from localStorage
 if (localStorage.getItem('astrojump_highscore')) {
@@ -662,24 +672,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
     btnRetry.addEventListener('click', () => {
         audio.playClick();
-        if (isMultiplayer) {
-            if (isHost) {
-                conn.send({ type: 'restart' });
-                startGame();
-            } else {
-                conn.send({ type: 'request_restart' });
-                document.getElementById('game-over-msg').textContent = "Solicitando reinício ao host...";
-            }
-        } else {
-            startGame();
-        }
+        startGame();
     });
 
     btnHome.addEventListener('click', () => {
         audio.playClick();
-        if (isMultiplayer) {
-            closeMultiplayer();
-        }
         showMenu();
     });
 
@@ -750,6 +747,10 @@ window.addEventListener('DOMContentLoaded', () => {
     
     // Initialize Leaderboard listeners
     initLeaderboardListeners();
+    // Initialize Auth and Profile listeners
+    initAuthProfileListeners();
+    // Update Auth Bar with current session
+    updateAuthSessionUI();
 });
 
 // Setup and Start Game logic
@@ -1430,8 +1431,67 @@ function interpolateColor(color1, color2, factor) {
     return `#${pad(r)}${pad(g)}${pad(b)}`;
 }
 
-// ==================== RANKING ONLINE (SUPABASE) ====================
+// ==================== RANKING ONLINE & CONTAS (SUPABASE) ====================
 
+// Hashing helper for secure passwords
+async function hashPassword(password) {
+    const msgBuffer = new TextEncoder().encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Update the user session bar UI on the start screen
+function updateAuthSessionUI() {
+    const sessionText = document.getElementById('user-session-text');
+    const btnShowAuth = document.getElementById('btn-show-auth');
+    const btnMyProfile = document.getElementById('btn-show-my-profile');
+    const btnLogout = document.getElementById('btn-logout');
+
+    if (loggedInPlayer) {
+        sessionText.innerHTML = `Olá, <strong class="username-highlight">${escapeHTML(loggedInPlayer.username)}</strong>!`;
+        btnShowAuth.classList.add('hidden');
+        btnMyProfile.classList.remove('hidden');
+        btnLogout.classList.remove('hidden');
+    } else {
+        sessionText.textContent = 'Não conectado';
+        btnShowAuth.classList.remove('hidden');
+        btnMyProfile.classList.add('hidden');
+        btnLogout.classList.add('hidden');
+    }
+}
+
+// Update the submit box container dynamically on Game Over
+function updateGameOverSubmitStatus() {
+    const statusEl = document.getElementById('rank-submit-status');
+    if (!statusEl) return;
+
+    if (loggedInPlayer) {
+        statusEl.innerHTML = `
+            <span>Conectado como <strong class="username-highlight">${escapeHTML(loggedInPlayer.username)}</strong></span>
+            <button id="btn-submit-score" class="btn-primary" style="margin-top: 8px; width: 100%;">
+                <span>ENVIAR PONTUAÇÃO</span>
+            </button>
+        `;
+        document.getElementById('btn-submit-score').addEventListener('click', () => {
+            audio.playClick();
+            submitScore();
+        });
+    } else {
+        statusEl.innerHTML = `
+            <span>Conecte-se para registrar seu recorde online!</span>
+            <button id="btn-submit-login-redirect" class="btn-primary" style="margin-top: 8px; width: 100%;">
+                <span>FAZER LOGIN / CADASTRO</span>
+            </button>
+        `;
+        document.getElementById('btn-submit-login-redirect').addEventListener('click', () => {
+            audio.playClick();
+            openAuthScreen();
+        });
+    }
+}
+
+// Fetch ranking from database
 async function fetchLeaderboard() {
     const loadingEl = document.getElementById('leaderboard-loading');
     const listEl = document.getElementById('leaderboard-list');
@@ -1448,7 +1508,18 @@ async function fetchLeaderboard() {
     try {
         const { data, error } = await supabase
             .from('leaderboard')
-            .select('*')
+            .select(`
+                score,
+                skin,
+                created_at,
+                players (
+                    id,
+                    username,
+                    bio,
+                    best_score,
+                    created_at
+                )
+            `)
             .order('score', { ascending: false })
             .limit(10);
 
@@ -1462,19 +1533,31 @@ async function fetchLeaderboard() {
                 const rank = idx + 1;
                 const item = document.createElement('div');
                 item.className = `leaderboard-item top-${rank <= 3 ? rank : 'other'}`;
+                item.style.cursor = 'pointer';
                 
+                const playerData = entry.players;
+                const username = playerData ? playerData.username : 'Desconhecido';
                 const skinName = SKINS[entry.skin]?.name || 'Classic';
 
                 item.innerHTML = `
                     <div class="leaderboard-left">
                         <span class="leaderboard-rank">${rank}</span>
                         <div>
-                            <span class="leaderboard-name">${escapeHTML(entry.username)}</span>
+                            <span class="leaderboard-name">${escapeHTML(username)}</span>
                             <div style="font-size: 9px; color: var(--text-muted); margin-top: 2px;">Skin: ${skinName}</div>
                         </div>
                     </div>
                     <span class="leaderboard-score">${entry.score}</span>
                 `;
+
+                // Clique para inspecionar perfil
+                item.addEventListener('click', () => {
+                    if (playerData) {
+                        audio.playClick();
+                        openProfileScreen(playerData, entry.skin);
+                    }
+                });
+
                 listEl.appendChild(item);
             });
         } else {
@@ -1486,41 +1569,52 @@ async function fetchLeaderboard() {
     }
 }
 
+// Send score to ranking online
 async function submitScore() {
-    const nameInput = document.getElementById('input-player-name');
-    const name = nameInput.value.trim();
-    if (!name) {
-        alert('Por favor, insira seu nome.');
-        return;
-    }
+    if (!supabase || !loggedInPlayer) return;
 
     const btnSubmit = document.getElementById('btn-submit-score');
-    const submitText = btnSubmit.querySelector('span');
+    const submitText = btnSubmit ? btnSubmit.querySelector('span') : null;
 
-    btnSubmit.disabled = true;
-    submitText.textContent = 'ENVIANDO...';
+    if (btnSubmit && submitText) {
+        btnSubmit.disabled = true;
+        submitText.textContent = 'ENVIANDO...';
+    }
 
     try {
         const { error } = await supabase
             .from('leaderboard')
             .insert([
-                { username: name, score: score, skin: currentSkinIdx }
+                { player_id: loggedInPlayer.id, score: score, skin: currentSkinIdx }
             ]);
 
         if (error) throw error;
 
+        // Se a pontuação for maior que a melhor registrada, atualiza o perfil do jogador
+        if (score > (loggedInPlayer.best_score || 0)) {
+            loggedInPlayer.best_score = score;
+            localStorage.setItem('astrojump_player', JSON.stringify(loggedInPlayer));
+            
+            await supabase
+                .from('players')
+                .update({ best_score: score })
+                .eq('id', loggedInPlayer.id);
+        }
+
         scoreSubmitted = true;
         document.getElementById('rank-submit-box').classList.add('hidden');
-        
         openLeaderboardScreen();
     } catch (err) {
         console.error('Erro ao enviar score:', err);
         alert('Erro ao enviar score: ' + err.message);
-        btnSubmit.disabled = false;
-        submitText.textContent = 'TENTAR DE NOVO';
+        if (btnSubmit && submitText) {
+            btnSubmit.disabled = false;
+            submitText.textContent = 'TENTAR DE NOVO';
+        }
     }
 }
 
+// Screen controls
 function openLeaderboardScreen() {
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('start-screen').classList.remove('active');
@@ -1547,10 +1641,111 @@ function closeLeaderboardScreen() {
     }
 }
 
+function openAuthScreen() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('active');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.remove('active');
+
+    const screen = document.getElementById('auth-screen');
+    screen.classList.remove('hidden');
+    screen.classList.add('active');
+
+    // Reset fields
+    document.getElementById('input-auth-username').value = '';
+    document.getElementById('input-auth-password').value = '';
+    document.getElementById('input-auth-confirm-password').value = '';
+    document.getElementById('auth-error-msg').classList.add('hidden');
+}
+
+function closeAuthScreen() {
+    const screen = document.getElementById('auth-screen');
+    screen.classList.add('hidden');
+    screen.classList.remove('active');
+
+    if (gameState === 'GAMEOVER') {
+        document.getElementById('game-over-screen').classList.remove('hidden');
+        document.getElementById('game-over-screen').classList.add('active');
+        updateGameOverSubmitStatus();
+    } else {
+        document.getElementById('start-screen').classList.remove('hidden');
+        document.getElementById('start-screen').classList.add('active');
+    }
+}
+
+// Profile Modal Controller (Inspecting players)
+let profileTargetPlayer = null; // holds player being inspected
+
+function renderProfileAvatar(skinIdx) {
+    const container = document.getElementById('profile-avatar-display');
+    if (!container) return;
+    container.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    canvas.width = 60;
+    canvas.height = 60;
+    container.appendChild(canvas);
+    
+    const ctx = canvas.getContext('2d');
+    const skin = SKINS[skinIdx] || SKINS[0];
+    skin.draw(ctx, 10, 10, 40, 40, false, 1.0, 1.0);
+}
+
+function openProfileScreen(playerData) {
+    profileTargetPlayer = playerData;
+
+    // Hide other screens
+    document.getElementById('leaderboard-screen').classList.add('hidden');
+    document.getElementById('leaderboard-screen').classList.remove('active');
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('start-screen').classList.remove('active');
+
+    const screen = document.getElementById('profile-screen');
+    screen.classList.remove('hidden');
+    screen.classList.add('active');
+
+    // Populate data
+    document.getElementById('profile-username').textContent = playerData.username;
+    
+    const dateFormatted = new Date(playerData.created_at).toLocaleDateString('pt-BR');
+    document.getElementById('profile-date').textContent = `Membro desde: ${dateFormatted}`;
+    document.getElementById('profile-record').textContent = playerData.best_score || 0;
+    
+    const bioText = document.getElementById('profile-bio-text');
+    const bioInput = document.getElementById('profile-bio-input');
+    const btnEditSave = document.getElementById('btn-profile-edit-save');
+
+    bioText.textContent = playerData.bio || 'Astro Saltador!';
+    bioText.classList.remove('hidden');
+    bioInput.classList.add('hidden');
+
+    // Check if the viewed player is the logged in player
+    if (loggedInPlayer && loggedInPlayer.id === playerData.id) {
+        btnEditSave.classList.remove('hidden');
+        btnEditSave.querySelector('span').textContent = 'EDITAR BIO';
+    } else {
+        btnEditSave.classList.add('hidden');
+    }
+}
+
+function closeProfileScreen() {
+    const screen = document.getElementById('profile-screen');
+    screen.classList.add('hidden');
+    screen.classList.remove('active');
+
+    // Return to leaderboard if it was open or menu
+    const leaderboardScreen = document.getElementById('leaderboard-screen');
+    if (gameState === 'GAMEOVER') {
+        openLeaderboardScreen();
+    } else {
+        // Return to start menu or leaderboard depending on what triggered it
+        openLeaderboardScreen();
+    }
+}
+
+// Event Listeners for Leaderboard
 function initLeaderboardListeners() {
     const btnMenu = document.getElementById('btn-leaderboard-menu');
     const btnBack = document.getElementById('btn-leaderboard-back');
-    const btnSubmit = document.getElementById('btn-submit-score');
 
     if (btnMenu) {
         btnMenu.addEventListener('click', () => {
@@ -1565,16 +1760,268 @@ function initLeaderboardListeners() {
             closeLeaderboardScreen();
         });
     }
+}
 
-    if (btnSubmit) {
-        btnSubmit.addEventListener('click', () => {
+// Event Listeners for Login, Register, and Profiles
+function initAuthProfileListeners() {
+    // Auth Screen Buttons
+    const btnShowAuth = document.getElementById('btn-show-auth');
+    const btnAuthBack = document.getElementById('btn-auth-back');
+    const btnAuthSubmit = document.getElementById('btn-auth-submit');
+    const btnLogout = document.getElementById('btn-logout');
+    const btnMyProfile = document.getElementById('btn-show-my-profile');
+
+    // Profile Screen Buttons
+    const btnProfileBack = document.getElementById('btn-profile-back');
+    const btnProfileEditSave = document.getElementById('btn-profile-edit-save');
+
+    // Tabs
+    const tabLogin = document.getElementById('tab-login');
+    const tabRegister = document.getElementById('tab-register');
+    const fieldConfirmPassword = document.getElementById('field-confirm-password');
+    let authTab = 'login'; // login or register
+
+    if (btnShowAuth) {
+        btnShowAuth.addEventListener('click', () => {
             audio.playClick();
-            submitScore();
+            openAuthScreen();
+        });
+    }
+
+    if (btnAuthBack) {
+        btnAuthBack.addEventListener('click', () => {
+            audio.playClick();
+            closeAuthScreen();
+        });
+    }
+
+    if (btnLogout) {
+        btnLogout.addEventListener('click', () => {
+            audio.playClick();
+            loggedInPlayer = null;
+            localStorage.removeItem('astrojump_player');
+            updateAuthSessionUI();
+        });
+    }
+
+    if (btnMyProfile) {
+        btnMyProfile.addEventListener('click', () => {
+            audio.playClick();
+            if (loggedInPlayer) openProfileScreen(loggedInPlayer);
+        });
+    }
+
+    if (btnProfileBack) {
+        btnProfileBack.addEventListener('click', () => {
+            audio.playClick();
+            closeProfileScreen();
+        });
+    }
+
+    // Toggle Bio Edit & Save
+    if (btnProfileEditSave) {
+        btnProfileEditSave.addEventListener('click', async () => {
+            audio.playClick();
+            const bioText = document.getElementById('profile-bio-text');
+            const bioInput = document.getElementById('profile-bio-input');
+            const btnSpan = btnProfileEditSave.querySelector('span');
+
+            if (btnSpan.textContent === 'EDITAR BIO') {
+                // Switch to edit mode
+                bioText.classList.add('hidden');
+                bioInput.classList.remove('hidden');
+                bioInput.value = loggedInPlayer.bio || 'Astro Saltador!';
+                bioInput.focus();
+                btnSpan.textContent = 'SALVAR';
+            } else {
+                // Save bio changes
+                const newBio = bioInput.value.trim();
+                if (!newBio) {
+                    alert('Sua descrição não pode ficar vazia.');
+                    return;
+                }
+
+                btnProfileEditSave.disabled = true;
+                btnSpan.textContent = 'SALVANDO...';
+
+                try {
+                    const { error } = await supabase
+                        .from('players')
+                        .update({ bio: newBio })
+                        .eq('id', loggedInPlayer.id);
+
+                    if (error) throw error;
+
+                    loggedInPlayer.bio = newBio;
+                    localStorage.setItem('astrojump_player', JSON.stringify(loggedInPlayer));
+
+                    bioText.textContent = newBio;
+                    bioText.classList.remove('hidden');
+                    bioInput.classList.add('hidden');
+                    btnSpan.textContent = 'EDITAR BIO';
+                } catch (err) {
+                    console.error('Erro ao salvar bio:', err);
+                    alert('Erro ao salvar bio: ' + err.message);
+                    btnSpan.textContent = 'SALVAR';
+                } finally {
+                    btnProfileEditSave.disabled = false;
+                }
+            }
+        });
+    }
+
+    // Auth Modal Tabs Setup
+    if (tabLogin) {
+        tabLogin.addEventListener('click', () => {
+            audio.playClick();
+            authTab = 'login';
+            tabLogin.classList.add('active');
+            tabRegister.classList.remove('active');
+            fieldConfirmPassword.classList.add('hidden');
+            document.getElementById('auth-title').textContent = 'Acessar Conta';
+            document.getElementById('auth-subtitle').textContent = 'Faça login para salvar seus records online';
+            btnAuthSubmit.querySelector('span').textContent = 'ENTRAR';
+            document.getElementById('auth-error-msg').classList.add('hidden');
+        });
+    }
+
+    if (tabRegister) {
+        tabRegister.addEventListener('click', () => {
+            audio.playClick();
+            authTab = 'register';
+            tabRegister.classList.add('active');
+            tabLogin.classList.remove('active');
+            fieldConfirmPassword.classList.remove('hidden');
+            document.getElementById('auth-title').textContent = 'Criar Conta';
+            document.getElementById('auth-subtitle').textContent = 'Registre um login único de explorador';
+            btnAuthSubmit.querySelector('span').textContent = 'CRIAR CONTA';
+            document.getElementById('auth-error-msg').classList.add('hidden');
+        });
+    }
+
+    // Submit Logins / Signups
+    if (btnAuthSubmit) {
+        btnAuthSubmit.addEventListener('click', async () => {
+            audio.playClick();
+            const usernameInput = document.getElementById('input-auth-username');
+            const passwordInput = document.getElementById('input-auth-password');
+            const confirmInput = document.getElementById('input-auth-confirm-password');
+            const errorMsg = document.getElementById('auth-error-msg');
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            errorMsg.classList.add('hidden');
+
+            if (!username || !password) {
+                errorMsg.textContent = 'Por favor, preencha todos os campos.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            if (username.length < 3) {
+                errorMsg.textContent = 'O nome de usuário deve ter pelo menos 3 caracteres.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            // Alpha-numeric usernames check
+            if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+                errorMsg.textContent = 'Nome de usuário deve conter apenas letras, números e underline.';
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            btnAuthSubmit.disabled = true;
+            btnAuthSubmit.querySelector('span').textContent = 'PROCESSANDO...';
+
+            try {
+                const passHash = await hashPassword(password);
+                const userLower = username.toLowerCase();
+
+                if (authTab === 'login') {
+                    // Authenticate Player
+                    const { data, error } = await supabase
+                        .from('players')
+                        .select('*')
+                        .eq('username', userLower)
+                        .maybeSingle();
+
+                    if (error) throw error;
+
+                    if (!data || data.password_hash !== passHash) {
+                        errorMsg.textContent = 'Nome de usuário ou senha inválidos.';
+                        errorMsg.classList.remove('hidden');
+                        btnAuthSubmit.disabled = false;
+                        btnAuthSubmit.querySelector('span').textContent = 'ENTRAR';
+                        return;
+                    }
+
+                    // Success login
+                    loggedInPlayer = data;
+                    localStorage.setItem('astrojump_player', JSON.stringify(loggedInPlayer));
+                    closeAuthScreen();
+                    updateAuthSessionUI();
+                } else {
+                    // Registration Flow
+                    const confirmPass = confirmInput.value.trim();
+                    if (password !== confirmPass) {
+                        errorMsg.textContent = 'As senhas não coincidem.';
+                        errorMsg.classList.remove('hidden');
+                        btnAuthSubmit.disabled = false;
+                        btnAuthSubmit.querySelector('span').textContent = 'CRIAR CONTA';
+                        return;
+                    }
+
+                    // Check duplicate user
+                    const { data: existing, error: checkError } = await supabase
+                        .from('players')
+                        .select('id')
+                        .eq('username', userLower)
+                        .maybeSingle();
+
+                    if (checkError) throw checkError;
+
+                    if (existing) {
+                        errorMsg.textContent = 'Nome de usuário já está em uso.';
+                        errorMsg.classList.remove('hidden');
+                        btnAuthSubmit.disabled = false;
+                        btnAuthSubmit.querySelector('span').textContent = 'CRIAR CONTA';
+                        return;
+                    }
+
+                    // Insert new player
+                    const { data: newPlayer, error: registerError } = await supabase
+                        .from('players')
+                        .insert([
+                            { username: userLower, password_hash: passHash, bio: 'Astro Saltador!' }
+                        ])
+                        .select()
+                        .single();
+
+                    if (registerError) throw registerError;
+
+                    // Success registration
+                    loggedInPlayer = newPlayer;
+                    localStorage.setItem('astrojump_player', JSON.stringify(loggedInPlayer));
+                    closeAuthScreen();
+                    updateAuthSessionUI();
+                }
+            } catch (err) {
+                console.error('Erro de autenticação:', err);
+                errorMsg.textContent = 'Ocorreu um erro no servidor: ' + err.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                btnAuthSubmit.disabled = false;
+                btnAuthSubmit.querySelector('span').textContent = authTab === 'login' ? 'ENTRAR' : 'CRIAR CONTA';
+            }
         });
     }
 }
 
+// Utility: Clean HTML escape
 function escapeHTML(str) {
+    if (!str) return '';
     return str.replace(/[&<>'"]/g, 
         tag => ({
             '&': '&amp;',

@@ -76,6 +76,22 @@
                     </div>
                 </div>
 
+                <!-- Barra de Sessão do Usuário -->
+                <div id="user-session-bar" class="user-session-bar">
+                    <span id="user-session-text">Não conectado</span>
+                    <div class="user-session-actions">
+                        <button id="btn-show-auth" class="btn-small">
+                            <span>LOGIN / CADASTRO</span>
+                        </button>
+                        <button id="btn-show-my-profile" class="btn-small hidden">
+                            <span>MEU PERFIL</span>
+                        </button>
+                        <button id="btn-logout" class="btn-small btn-danger hidden">
+                            <span>SAIR</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="menu-actions">
                     <button id="btn-start" class="btn-primary">
                         <span>SOLO</span>
@@ -85,6 +101,9 @@
                     </button>
                     <button id="btn-leaderboard-menu" class="btn-secondary">
                         <span>RANK ONLINE</span>
+                        <svg viewBox="0 0 24 24" width="24" height="24">
+                            <path fill="currentColor" d="M18 2H6v2H2v6c0 2.21 1.79 4 4 4h2c.86 1.83 2.5 3.19 4.58 3.58C12.19 19.5 10 22 10 22h4s0-2.5-2.58-4.42C13.5 17.19 15.14 15.83 16 14h2c2.21 0 4-1.79 4-4V4h-4V2zM6 12c-1.1 0-2-.9-2-2V6h2v6zm14-2c0 1.1-.9 2-2 2h-2V6h2v4z" />
+                        </svg>
                     </button>
                 </div>
 
@@ -137,12 +156,9 @@
 
                     <!-- Rank Submit Box -->
                     <div id="rank-submit-box" class="leaderboard-submit-box hidden">
-                        <span class="leaderboard-submit-title">ENVIAR PARA O RANK ONLINE</span>
-                        <div class="leaderboard-submit-input-group">
-                            <input type="text" id="input-player-name" placeholder="SEU NOME" maxlength="12">
-                            <button id="btn-submit-score" class="btn-primary">
-                                <span>ENVIAR</span>
-                            </button>
+                        <span class="leaderboard-submit-title">RANK ONLINE</span>
+                        <div id="rank-submit-status" class="rank-submit-status">
+                            <!-- Preenchido via JS -->
                         </div>
                     </div>
 
@@ -155,6 +171,9 @@
                         </button>
                         <button id="btn-home" class="btn-secondary">
                             <span>MENU INICIAL</span>
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z" />
+                            </svg>
                         </button>
                     </div>
                 </div>
@@ -177,6 +196,79 @@
                     <button id="btn-leaderboard-back" class="btn-secondary" style="margin-top: 20px; width: 100%;">
                         <span>VOLTAR</span>
                     </button>
+                </div>
+            </div>
+
+            <!-- Tela de Autenticação (Login / Registro) -->
+            <div id="auth-screen" class="overlay-screen hidden">
+                <div class="glass-card">
+                    <h2 id="auth-title">Acessar Conta</h2>
+                    <p class="subtitle" id="auth-subtitle">Faça login para salvar seus records online</p>
+                    
+                    <div class="auth-tabs">
+                        <button id="tab-login" class="tab-btn active">Entrar</button>
+                        <button id="tab-register" class="tab-btn">Cadastrar</button>
+                    </div>
+
+                    <div class="auth-form">
+                        <div class="input-field">
+                            <label for="input-auth-username">Nome de Usuário</label>
+                            <input type="text" id="input-auth-username" placeholder="Digite seu username" maxlength="15">
+                        </div>
+                        <div class="input-field">
+                            <label for="input-auth-password">Senha</label>
+                            <input type="password" id="input-auth-password" placeholder="Digite sua senha">
+                        </div>
+                        <div class="input-field hidden" id="field-confirm-password">
+                            <label for="input-auth-confirm-password">Confirmar Senha</label>
+                            <input type="password" id="input-auth-confirm-password" placeholder="Confirme sua senha">
+                        </div>
+
+                        <div id="auth-error-msg" class="auth-error-msg hidden"></div>
+
+                        <button id="btn-auth-submit" class="btn-primary" style="margin-top: 15px; width: 100%;">
+                            <span>ENTRAR</span>
+                        </button>
+                    </div>
+
+                    <button id="btn-auth-back" class="btn-secondary" style="margin-top: 15px; width: 100%;">
+                        <span>VOLTAR</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tela de Perfil do Jogador -->
+            <div id="profile-screen" class="overlay-screen hidden">
+                <div class="glass-card profile-card">
+                    <div class="profile-header">
+                        <div class="profile-avatar-container">
+                            <div class="profile-avatar" id="profile-avatar-display"></div>
+                        </div>
+                        <h2 id="profile-username">NomeJogador</h2>
+                        <span id="profile-date" class="profile-date">Membro desde: --/--/----</span>
+                    </div>
+
+                    <div class="profile-stats">
+                        <div class="profile-stat-box">
+                            <span class="stat-label">RECORDE ONLINE</span>
+                            <span id="profile-record" class="stat-val">0</span>
+                        </div>
+                    </div>
+
+                    <div class="profile-bio-section">
+                        <span class="bio-label">BIO / DESCRIÇÃO:</span>
+                        <p id="profile-bio-text" class="profile-bio-text">Astro Saltador!</p>
+                        <textarea id="profile-bio-input" class="profile-bio-input hidden" placeholder="Fale um pouco sobre você..." maxlength="100"></textarea>
+                    </div>
+
+                    <div class="menu-actions vertical" style="margin-top: 20px;">
+                        <button id="btn-profile-edit-save" class="btn-primary hidden">
+                            <span>EDITAR BIO</span>
+                        </button>
+                        <button id="btn-profile-back" class="btn-secondary" style="width: 100%;">
+                            <span>FECHAR</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
