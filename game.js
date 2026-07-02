@@ -887,6 +887,9 @@ function gameOver() {
     if (supabase && score > 0 && !scoreSubmitted) {
         updateGameOverSubmitStatus();
         submitBox.classList.remove('hidden');
+        if (loggedInPlayer) {
+            submitScore(false);
+        }
     } else {
         submitBox.classList.add('hidden');
     }
@@ -1461,21 +1464,17 @@ function updateAuthSessionUI() {
 }
 
 // Update the submit box container dynamically on Game Over
-function updateGameOverSubmitStatus() {
+function updateGameOverSubmitStatus(statusText = '') {
     const statusEl = document.getElementById('rank-submit-status');
     if (!statusEl) return;
 
     if (loggedInPlayer) {
         statusEl.innerHTML = `
             <span>Conectado como <strong class="username-highlight">${escapeHTML(loggedInPlayer.username)}</strong></span>
-            <button id="btn-submit-score" class="btn-primary" style="margin-top: 8px; width: 100%;">
-                <span>ENVIAR PONTUAÇÃO</span>
-            </button>
+            <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px; display: block;" id="auto-submit-msg">
+                ${statusText || 'Enviando pontuação...'}
+            </span>
         `;
-        document.getElementById('btn-submit-score').addEventListener('click', () => {
-            audio.playClick();
-            submitScore();
-        });
     } else {
         statusEl.innerHTML = `
             <span>Conecte-se para registrar seu recorde online!</span>
@@ -1569,27 +1568,47 @@ async function fetchLeaderboard() {
 }
 
 // Send score to ranking online
-async function submitScore() {
+async function submitScore(showLeaderboard = false) {
     if (!supabase || !loggedInPlayer) return;
 
-    const btnSubmit = document.getElementById('btn-submit-score');
-    const submitText = btnSubmit ? btnSubmit.querySelector('span') : null;
-
-    if (btnSubmit && submitText) {
-        btnSubmit.disabled = true;
-        submitText.textContent = 'ENVIANDO...';
+    const msgEl = document.getElementById('auto-submit-msg');
+    if (msgEl) {
+        msgEl.textContent = 'Enviando pontuação...';
+        msgEl.style.color = 'var(--text-muted)';
     }
 
     try {
-        const { error } = await supabase
+        // 1. Verificar se o jogador já tem registro no leaderboard
+        const { data: existing, error: fetchError } = await supabase
             .from('leaderboard')
-            .insert([
-                { player_id: loggedInPlayer.id, score: score, skin: currentSkinIdx }
-            ]);
+            .select('id, score')
+            .eq('player_id', loggedInPlayer.id)
+            .maybeSingle();
 
-        if (error) throw error;
+        if (fetchError) throw fetchError;
 
-        // Se a pontuação for maior que a melhor registrada, atualiza o perfil do jogador
+        if (existing) {
+            // Só atualiza se a nova pontuação for maior
+            if (score > existing.score) {
+                const { error: updateError } = await supabase
+                    .from('leaderboard')
+                    .update({ score: score, skin: currentSkinIdx })
+                    .eq('id', existing.id);
+
+                if (updateError) throw updateError;
+            }
+        } else {
+            // Se não existe, insere a primeira
+            const { error: insertError } = await supabase
+                .from('leaderboard')
+                .insert([
+                    { player_id: loggedInPlayer.id, score: score, skin: currentSkinIdx }
+                ]);
+
+            if (insertError) throw insertError;
+        }
+
+        // Se a pontuação for maior que a melhor registrada no perfil do jogador
         if (score > (loggedInPlayer.best_score || 0)) {
             loggedInPlayer.best_score = score;
             localStorage.setItem('astrojump_player', JSON.stringify(loggedInPlayer));
@@ -1601,14 +1620,26 @@ async function submitScore() {
         }
 
         scoreSubmitted = true;
-        document.getElementById('rank-submit-box').classList.add('hidden');
-        openLeaderboardScreen();
+
+        if (msgEl) {
+            msgEl.innerHTML = '<span style="color: #00e5ff;">✓ Recorde salvo online!</span>';
+        }
+
+        // Oculta a caixinha de envio após 2.5 segundos
+        setTimeout(() => {
+            const submitBox = document.getElementById('rank-submit-box');
+            if (submitBox && scoreSubmitted) {
+                submitBox.classList.add('hidden');
+            }
+        }, 2500);
+
+        if (showLeaderboard) {
+            openLeaderboardScreen();
+        }
     } catch (err) {
         console.error('Erro ao enviar score:', err);
-        alert('Erro ao enviar score: ' + err.message);
-        if (btnSubmit && submitText) {
-            btnSubmit.disabled = false;
-            submitText.textContent = 'TENTAR DE NOVO';
+        if (msgEl) {
+            msgEl.innerHTML = `<span style="color: #ff4a4a;">Erro ao enviar recorde.</span>`;
         }
     }
 }
@@ -1666,6 +1697,9 @@ function closeAuthScreen() {
         document.getElementById('game-over-screen').classList.remove('hidden');
         document.getElementById('game-over-screen').classList.add('active');
         updateGameOverSubmitStatus();
+        if (loggedInPlayer && score > 0 && !scoreSubmitted) {
+            submitScore(false);
+        }
     } else {
         document.getElementById('start-screen').classList.remove('hidden');
         document.getElementById('start-screen').classList.add('active');
